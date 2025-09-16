@@ -625,6 +625,9 @@
                         <div class="user-info">
                             <div class="user-name" id="userDisplayName">Пользователь</div>
                         </div>
+                        <button class="btn btn-secondary btn-mini" onclick="logout()" style="padding: 8px 12px; font-size: 0.8rem;">
+                            Выйти
+                        </button>
                     </div>
                     
                     <input type="text" class="search-box" placeholder="Поиск пользователей..." id="searchInput">
@@ -838,6 +841,8 @@
         let currentSecureChatKey = null;
         let isSecureChat = false;
         let sessionId = null;
+        let messageUpdateInterval = null;
+        let chatUpdateInterval = null;
 
         // Показ уведомлений
         function showNotification(message, type = 'info') {
@@ -916,10 +921,16 @@
             if (data.success) {
                 currentUser = data.user_data;
                 sessionId = data.session_id;
+                
+                // Сохраняем данные в localStorage
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                localStorage.setItem('sessionId', sessionId);
+                
                 document.getElementById('userDisplayName').textContent = currentUser.display_name;
                 closeModal('loginModal');
                 showMessengerInterface();
                 loadChats();
+                startAutoUpdate();
                 showNotification('Успешный вход в систему', 'success');
             } else {
                 showNotification(data.error, 'error');
@@ -1100,6 +1111,10 @@
             
             if (!content || !currentChatId) return;
             
+            // Сразу показываем сообщение локально для быстрого отклика
+            addMessage(content, currentUser.display_name, true);
+            messageInput.value = '';
+            
             const data = await apiRequest('send_message', {
                 session_id: sessionId,
                 chat_id: currentChatId,
@@ -1107,11 +1122,17 @@
                 message_type: 'normal'
             });
             
-            if (data.success) {
-                addMessage(content, currentUser.display_name, true);
-                messageInput.value = '';
-            } else {
+            if (!data.success) {
                 showNotification(data.error, 'error');
+                // Удаляем сообщение если отправка не удалась
+                const messagesContainer = document.getElementById('messagesContainer');
+                const lastMessage = messagesContainer.lastElementChild;
+                if (lastMessage) {
+                    lastMessage.remove();
+                }
+            } else {
+                // Обновляем список чатов после успешной отправки
+                loadChats();
             }
         }
 
@@ -1122,17 +1143,24 @@
             
             if (!content || !currentSecureChatKey) return;
             
+            // Сразу показываем сообщение локально для быстрого отклика
+            addSecureMessage(content, currentUser ? currentUser.display_name : 'Вы');
+            messageInput.value = '';
+            
             const data = await apiRequest('send_secure_message', {
                 session_id: sessionId,
                 chat_key: currentSecureChatKey,
                 content: content
             });
             
-            if (data.success) {
-                addSecureMessage(content, currentUser ? currentUser.display_name : 'Вы');
-                messageInput.value = '';
-            } else {
+            if (!data.success) {
                 showNotification(data.error, 'error');
+                // Удаляем сообщение если отправка не удалась
+                const messagesContainer = document.getElementById('secureMessagesContainer');
+                const lastMessage = messagesContainer.lastElementChild;
+                if (lastMessage) {
+                    lastMessage.remove();
+                }
             }
         }
 
@@ -1188,9 +1216,14 @@
             currentSecureChatKey = null;
             isSecureChat = false;
             
+            // Останавливаем автообновление
+            stopAutoUpdate();
+            
             document.getElementById('welcomeScreen').classList.add('active');
             document.getElementById('secureChatInterface').classList.remove('active');
             document.getElementById('messengerInterface').classList.remove('active');
+            
+            showNotification('Вы вышли из защищенного чата', 'info');
         }
 
         // Обработка нажатий клавиш
@@ -1206,9 +1239,142 @@
             }
         }
 
+        // Автоматическое обновление сообщений
+        function startAutoUpdate() {
+            // Очищаем предыдущие интервалы
+            if (messageUpdateInterval) clearInterval(messageUpdateInterval);
+            if (chatUpdateInterval) clearInterval(chatUpdateInterval);
+            
+            // Обновляем сообщения каждые 2 секунды
+            messageUpdateInterval = setInterval(() => {
+                if (currentChatId && !isSecureChat) {
+                    updateMessages();
+                } else if (currentSecureChatKey && isSecureChat) {
+                    updateSecureMessages();
+                }
+            }, 2000);
+            
+            // Обновляем список чатов каждые 5 секунд
+            chatUpdateInterval = setInterval(() => {
+                if (currentUser && !isSecureChat) {
+                    loadChats();
+                }
+            }, 5000);
+        }
+        
+        // Остановка автоматического обновления
+        function stopAutoUpdate() {
+            if (messageUpdateInterval) {
+                clearInterval(messageUpdateInterval);
+                messageUpdateInterval = null;
+            }
+            if (chatUpdateInterval) {
+                clearInterval(chatUpdateInterval);
+                chatUpdateInterval = null;
+            }
+        }
+        
+        // Обновление сообщений в обычном чате
+        async function updateMessages() {
+            if (!currentChatId || !sessionId) return;
+            
+            const data = await apiRequest('get_messages', {
+                session_id: sessionId,
+                chat_id: currentChatId
+            });
+            
+            if (data.success) {
+                const messagesContainer = document.getElementById('messagesContainer');
+                const currentMessageCount = messagesContainer.children.length;
+                
+                // Если количество сообщений изменилось, обновляем
+                if (data.messages.length !== currentMessageCount) {
+                    messagesContainer.innerHTML = '';
+                    data.messages.reverse().forEach(message => {
+                        const isOwn = message.sender_id === currentUser.user_id;
+                        addMessage(message.content, message.sender_name, isOwn);
+                    });
+                }
+            }
+        }
+        
+        // Обновление сообщений в защищенном чате
+        async function updateSecureMessages() {
+            if (!currentSecureChatKey) return;
+            
+            const data = await apiRequest('get_secure_messages', {
+                chat_key: currentSecureChatKey
+            });
+            
+            if (data.success) {
+                const messagesContainer = document.getElementById('secureMessagesContainer');
+                const currentMessageCount = messagesContainer.children.length;
+                
+                // Если количество сообщений изменилось, обновляем
+                if (data.messages.length !== currentMessageCount) {
+                    messagesContainer.innerHTML = '';
+                    data.messages.forEach(msg => {
+                        addSecureMessage(msg.content, msg.sender);
+                    });
+                }
+            }
+        }
+        
+        // Восстановление сессии из localStorage
+        function restoreSession() {
+            const savedUser = localStorage.getItem('currentUser');
+            const savedSessionId = localStorage.getItem('sessionId');
+            
+            if (savedUser && savedSessionId) {
+                try {
+                    currentUser = JSON.parse(savedUser);
+                    sessionId = savedSessionId;
+                    
+                    document.getElementById('userDisplayName').textContent = currentUser.display_name;
+                    showMessengerInterface();
+                    loadChats();
+                    startAutoUpdate();
+                    
+                    showNotification('Сессия восстановлена', 'success');
+                    return true;
+                } catch (error) {
+                    console.error('Ошибка восстановления сессии:', error);
+                    localStorage.removeItem('currentUser');
+                    localStorage.removeItem('sessionId');
+                }
+            }
+            return false;
+        }
+        
+        // Выход из системы
+        function logout() {
+            currentUser = null;
+            sessionId = null;
+            currentChatId = null;
+            currentSecureChatKey = null;
+            isSecureChat = false;
+            
+            // Очищаем localStorage
+            localStorage.removeItem('currentUser');
+            localStorage.removeItem('sessionId');
+            
+            // Останавливаем автообновление
+            stopAutoUpdate();
+            
+            // Возвращаемся на экран приветствия
+            document.getElementById('welcomeScreen').classList.add('active');
+            document.getElementById('messengerInterface').classList.remove('active');
+            document.getElementById('secureChatInterface').classList.remove('active');
+            
+            showNotification('Вы вышли из системы', 'info');
+        }
+
         // Инициализация при загрузке страницы
         document.addEventListener('DOMContentLoaded', function() {
-            showNotification('Добро пожаловать в Secure Messenger!', 'info');
+            // Пытаемся восстановить сессию
+            if (!restoreSession()) {
+                showNotification('Добро пожаловать в Secure Messenger!', 'info');
+            }
             
             // Добавляем эффект загрузки
             document.body.style.opacity = '0';
