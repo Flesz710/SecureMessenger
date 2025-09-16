@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Messenger - Веб-версия</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e1e1e 0%, #2b2b2b 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            color: #0078d7;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            color: #888;
+            font-size: 1.1rem;
+        }
+
+        .main-content {
+            display: none;
+        }
+
+        .main-content.active {
+            display: block;
+        }
+
+        /* Экран приветствия */
+        .welcome-screen {
+            text-align: center;
+            padding: 50px 20px;
+        }
+
+        .welcome-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 400px;
+            margin: 40px auto;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #0078d7;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #005a9e;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        /* Модальные окна */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: #2b2b2b;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            border: 1px solid #555;
+        }
+
+        .modal-header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .modal-header h2 {
+            color: #0078d7;
+            margin-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #e0e0e0;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #555;
+            border-radius: 8px;
+            background: #3c3c3c;
+            color: #f0f0f0;
+            font-size: 1rem;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #0078d7;
+            box-shadow: 0 0 0 2px rgba(0,120,215,0.2);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 25px;
+        }
+
+        .btn-small {
+            padding: 10px 20px;
+            font-size: 0.9rem;
+        }
+
+        /* Главный интерфейс мессенджера */
+        .messenger-container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            height: 70vh;
+            background: #2b2b2b;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 1px solid #555;
+        }
+
+        .sidebar {
+            background: #1e1e1e;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .user-info {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: bold;
+            color: #0078d7;
+        }
+
+        .settings-btn {
+            background: #555;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #555;
+            border-radius: 8px;
+            background: #3c3c3c;
+            color: #f0f0f0;
+            margin-bottom: 15px;
+        }
+
+        .chat-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn-mini {
+            padding: 8px 12px;
+            font-size: 0.8rem;
+            flex: 1;
+        }
+
+        .chats-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .chat-item {
+            padding: 12px;
+            border-bottom: 1px solid #444;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .chat-item:hover {
+            background: #3c3c3c;
+        }
+
+        .chat-item.active {
+            background: #0078d7;
+        }
+
+        .chat-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .chat-last-message {
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .chat-area {
+            display: flex;
+            flex-direction: column;
+            background: #2b2b2b;
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid #555;
+            background: #1e1e1e;
+        }
+
+        .chat-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #e0e0e0;
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #2b2b2b;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+
+        .message.sent {
+            background: #0078d7;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .message.received {
+            background: #3c3c3c;
+            color: #e0e0e0;
+        }
+
+        .message-info {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .message-input-area {
+            padding: 20px;
+            border-top: 1px solid #555;
+            background: #1e1e1e;
+        }
+
+        .message-input-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #555;
+            border-radius: 25px;
+            background: #3c3c3c;
+            color: #f0f0f0;
+            font-size: 1rem;
+        }
+
+        .message-input:focus {
+            outline: none;
+            border-color: #0078d7;
+        }
+
+        .send-btn {
+            background: #0078d7;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        .send-btn:hover {
+            background: #005a9e;
+        }
+
+        /* Защищенный чат */
+        .secure-chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #2b2b2b;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 1px solid #555;
+        }
+
+        .secure-chat-header {
+            background: #dc3545;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .secure-chat-info {
+            padding: 20px;
+            background: #1e1e1e;
+            border-bottom: 1px solid #555;
+        }
+
+        .secure-chat-status {
+            text-align: center;
+            padding: 20px;
+            color: #ffa500;
+            font-weight: bold;
+        }
+
+        .secure-chat-status.connected {
+            color: #28a745;
+        }
+
+        /* Адаптивность */
+        @media (max-width: 768px) {
+            .messenger-container {
+                grid-template-columns: 1fr;
+                height: 80vh;
+            }
+            
+            .sidebar {
+                order: 2;
+                height: 200px;
+            }
+            
+            .chat-area {
+                order: 1;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .welcome-buttons {
+                max-width: 300px;
+            }
+        }
+
+        /* Анимации */
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        /* Уведомления */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: bold;
+            z-index: 1001;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .notification.success {
+            background: #28a745;
+        }
+
+        .notification.error {
+            background: #dc3545;
+        }
+
+        .notification.info {
+            background: #0078d7;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Заголовок -->
+        <div class="header">
+            <h1>🔐 Secure Messenger</h1>
+            <p>Защищенный мессенджер с end-to-end шифрованием</p>
+        </div>
+
+        <!-- Экран приветствия -->
+        <div id="welcomeScreen" class="main-content active">
+            <div class="welcome-screen">
+                <div class="welcome-buttons">
+                    <button class="btn btn-primary" onclick="showLoginModal()">
+                        🔑 Войти
+                    </button>
+                    <button class="btn btn-success" onclick="showRegisterModal()">
+                        📝 Зарегистрироваться
+                    </button>
+                    <button class="btn btn-secondary" onclick="showSecureChatModal()">
+                        🛡️ Продолжить без регистрации
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Главный интерфейс мессенджера -->
+        <div id="messengerInterface" class="main-content">
+            <div class="messenger-container">
+                <!-- Боковая панель -->
+                <div class="sidebar">
+                    <div class="sidebar-header">
+                        <div class="user-info">
+                            <div class="user-name" id="userDisplayName">Пользователь</div>
+                        </div>
+                        <button class="settings-btn" onclick="showSettings()">⚙️</button>
+                    </div>
+                    
+                    <input type="text" class="search-box" placeholder="Поиск пользователей..." id="searchInput">
+                    
+                    <div class="chat-buttons">
+                        <button class="btn btn-success btn-mini" onclick="showNewChatModal()">Новый чат</button>
+                        <button class="btn btn-secondary btn-mini" onclick="showSecureChatModal()">Защищенный</button>
+                    </div>
+                    
+                    <div class="chats-list" id="chatsList">
+                        <!-- Список чатов будет загружен динамически -->
+                    </div>
+                </div>
+
+                <!-- Область чата -->
+                <div class="chat-area">
+                    <div class="chat-header">
+                        <div class="chat-title" id="chatTitle">Выберите чат</div>
+                    </div>
+                    
+                    <div class="messages-container" id="messagesContainer">
+                        <div style="text-align: center; color: #888; margin-top: 50px;">
+                            Выберите чат для начала общения
+                        </div>
+                    </div>
+                    
+                    <div class="message-input-area">
+                        <div class="message-input-container">
+                            <input type="text" class="message-input" placeholder="Введите сообщение..." id="messageInput" onkeypress="handleKeyPress(event)">
+                            <button class="send-btn" onclick="sendMessage()">📤</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Защищенный чат -->
+        <div id="secureChatInterface" class="main-content">
+            <div class="secure-chat-container">
+                <div class="secure-chat-header">
+                    <h2>🛡️ Защищенный чат</h2>
+                </div>
+                
+                <div class="secure-chat-info">
+                    <div>Ключ чата: <strong id="secureChatKey">-</strong></div>
+                    <div>Участников: <span id="secureChatParticipants">0</span></div>
+                </div>
+                
+                <div class="secure-chat-status" id="secureChatStatus">
+                    Ожидание подключения...
+                </div>
+                
+                <div class="messages-container" id="secureMessagesContainer">
+                    <!-- Сообщения защищенного чата -->
+                </div>
+                
+                <div class="message-input-area">
+                    <div class="message-input-container">
+                        <input type="text" class="message-input" placeholder="Введите зашифрованное сообщение..." id="secureMessageInput" onkeypress="handleSecureKeyPress(event)">
+                        <button class="send-btn" onclick="sendSecureMessage()">🔐</button>
+                    </div>
+                </div>
+                
+                <div style="padding: 20px; text-align: center;">
+                    <button class="btn btn-secondary" onclick="exitSecureChat()">Выйти из чата</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальные окна -->
+    <!-- Модальное окно входа -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🔑 Вход в систему</h2>
+            </div>
+            <form onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label>Логин:</label>
+                    <input type="text" id="loginUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Пароль:</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-small">Войти</button>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('loginModal')">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно регистрации -->
+    <div id="registerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📝 Регистрация</h2>
+            </div>
+            <form onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label>Логин:</label>
+                    <input type="text" id="registerUsername" required>
+                </div>
+                <div class="form-group">
+                    <label>Имя аккаунта:</label>
+                    <input type="text" id="registerDisplayName" required>
+                </div>
+                <div class="form-group">
+                    <label>Пароль:</label>
+                    <input type="password" id="registerPassword" required>
+                </div>
+                <div class="form-group">
+                    <label>Подтвердите пароль:</label>
+                    <input type="password" id="registerConfirmPassword" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success btn-small">Зарегистрироваться</button>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('registerModal')">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно защищенного чата -->
+    <div id="secureChatModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🛡️ Защищенный режим</h2>
+            </div>
+            <div style="text-align: center; margin-bottom: 20px;">
+                <button class="btn btn-primary btn-small" onclick="showCreateSecureChat()" style="margin: 5px;">Создать диалог</button>
+                <button class="btn btn-secondary btn-small" onclick="showJoinSecureChat()" style="margin: 5px;">Подключиться</button>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('secureChatModal')">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно создания защищенного чата -->
+    <div id="createSecureChatModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🛡️ Создание диалога</h2>
+            </div>
+            <form onsubmit="handleCreateSecureChat(event)">
+                <div class="form-group">
+                    <label>Ключ диалога:</label>
+                    <input type="text" id="createChatKey" required placeholder="Введите уникальный ключ">
+                </div>
+                <div class="form-group">
+                    <label>Ключ шифрования (опционально):</label>
+                    <input type="text" id="createEncryptKey" placeholder="Оставьте пустым для автоматической генерации">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-small">Создать</button>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('createSecureChatModal')">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно подключения к защищенному чату -->
+    <div id="joinSecureChatModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🛡️ Подключение к диалогу</h2>
+            </div>
+            <form onsubmit="handleJoinSecureChat(event)">
+                <div class="form-group">
+                    <label>Ключ диалога:</label>
+                    <input type="text" id="joinChatKey" required placeholder="Введите ключ диалога">
+                </div>
+                <div class="form-group">
+                    <label>Ключ шифрования:</label>
+                    <input type="text" id="joinEncryptKey" placeholder="Введите ключ шифрования">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-small">Подключиться</button>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('joinSecureChatModal')">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Модальное окно нового чата -->
+    <div id="newChatModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>💬 Новый чат</h2>
+            </div>
+            <form onsubmit="handleNewChat(event)">
+                <div class="form-group">
+                    <label>Имя пользователя:</label>
+                    <input type="text" id="newChatUsername" required placeholder="Введите имя аккаунта">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-small">Найти</button>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('newChatModal')">Отмена</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Глобальные переменные
+        let socket;
+        let currentUser = null;
+        let currentChatId = null;
+        let currentSecureChatKey = null;
+        let isSecureChat = false;
+
+        // Инициализация WebSocket
+        function initSocket() {
+            socket = io();
+            
+            socket.on('connect', function() {
+                console.log('Подключен к серверу');
+                showNotification('Подключено к серверу', 'success');
+            });
+            
+            socket.on('disconnect', function() {
+                console.log('Отключен от сервера');
+                showNotification('Отключено от сервера', 'error');
+            });
+            
+            socket.on('new_message', function(data) {
+                if (data.chat_id == currentChatId) {
+                    addMessage(data.content, data.sender_name, false);
+                }
+            });
+            
+            socket.on('secure_message', function(data) {
+                if (data.chat_key == currentSecureChatKey) {
+                    addSecureMessage(data.content, data.sender_name);
+                }
+            });
+            
+            socket.on('participant_joined', function(data) {
+                if (data.chat_key == currentSecureChatKey) {
+                    updateSecureChatStatus(`Участник ${data.participant_name} подключился`, 'connected');
+                    addSecureMessage(`Участник ${data.participant_name} присоединился к чату`, 'Система');
+                }
+            });
+            
+            socket.on('error', function(data) {
+                showNotification(data.message, 'error');
+            });
+        }
+
+        // Показ уведомлений
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // Управление модальными окнами
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function showLoginModal() {
+            showModal('loginModal');
+        }
+
+        function showRegisterModal() {
+            showModal('registerModal');
+        }
+
+        function showSecureChatModal() {
+            showModal('secureChatModal');
+        }
+
+        function showCreateSecureChat() {
+            closeModal('secureChatModal');
+            showModal('createSecureChatModal');
+        }
+
+        function showJoinSecureChat() {
+            closeModal('secureChatModal');
+            showModal('joinSecureChatModal');
+        }
+
+        function showNewChatModal() {
+            showModal('newChatModal');
+        }
+
+        function showSettings() {
+            showNotification('Настройки будут добавлены в следующей версии', 'info');
+        }
+
+        // Обработка входа
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentUser = data.user_data;
+                    document.getElementById('userDisplayName').textContent = currentUser.display_name;
+                    closeModal('loginModal');
+                    showMessengerInterface();
+                    loadChats();
+                    showNotification('Успешный вход в систему', 'success');
+                } else {
+                    showNotification(data.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Ошибка подключения к серверу', 'error');
+            }
+        }
+
+        // Обработка регистрации
+        async function handleRegister(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('registerUsername').value;
+            const displayName = document.getElementById('registerDisplayName').value;
+            const password = document.getElementById('registerPassword').value;
+            const confirmPassword = document.getElementById('registerConfirmPassword').value;
+            
+            if (password !== confirmPassword) {
+                showNotification('Пароли не совпадают', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, display_name: displayName, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    closeModal('registerModal');
+                    showNotification(`Регистрация успешна! Секретная фраза: ${data.secret_phrase}`, 'success');
+                } else {
+                    showNotification(data.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Ошибка подключения к серверу', 'error');
+            }
+        }
+
+        // Обработка создания защищенного чата
+        function handleCreateSecureChat(event) {
+            event.preventDefault();
+            
+            const chatKey = document.getElementById('createChatKey').value;
+            const encryptKey = document.getElementById('createEncryptKey').value;
+            
+            socket.emit('create_secure_chat', {
+                chat_key: chatKey,
+                encryption_key: encryptKey
+            });
+            
+            socket.on('secure_chat_created', function(data) {
+                currentSecureChatKey = data.chat_key;
+                isSecureChat = true;
+                closeModal('createSecureChatModal');
+                showSecureChatInterface();
+                updateSecureChatStatus('Диалог создан. Ожидание участников...', 'info');
+                showNotification(`Диалог создан! Ключ: ${data.chat_key}`, 'success');
+            });
+        }
+
+        // Обработка подключения к защищенному чату
+        function handleJoinSecureChat(event) {
+            event.preventDefault();
+            
+            const chatKey = document.getElementById('joinChatKey').value;
+            const encryptKey = document.getElementById('joinEncryptKey').value;
+            
+            socket.emit('join_secure_chat', {
+                chat_key: chatKey,
+                encryption_key: encryptKey
+            });
+            
+            socket.on('joined_secure_chat', function(data) {
+                currentSecureChatKey = data.chat_key;
+                isSecureChat = true;
+                closeModal('joinSecureChatModal');
+                showSecureChatInterface();
+                updateSecureChatStatus(`Подключено к диалогу. Участников: ${data.participants_count}`, 'connected');
+                showNotification('Подключено к защищенному чату', 'success');
+            });
+        }
+
+        // Обработка нового чата
+        async function handleNewChat(event) {
+            event.preventDefault();
+            
+            const displayName = document.getElementById('newChatUsername').value;
+            
+            try {
+                const response = await fetch('/api/find_user', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ display_name: displayName })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Создаем чат с найденным пользователем
+                    const chatResponse = await fetch('/api/create_chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ user_id: data.user_data.user_id })
+                    });
+                    
+                    const chatData = await chatResponse.json();
+                    
+                    if (chatData.success) {
+                        closeModal('newChatModal');
+                        loadChats();
+                        showNotification(`Чат с ${displayName} создан`, 'success');
+                    } else {
+                        showNotification(chatData.error, 'error');
+                    }
+                } else {
+                    showNotification(data.error, 'error');
+                }
+            } catch (error) {
+                showNotification('Ошибка подключения к серверу', 'error');
+            }
+        }
+
+        // Показ интерфейсов
+        function showMessengerInterface() {
+            document.getElementById('welcomeScreen').classList.remove('active');
+            document.getElementById('secureChatInterface').classList.remove('active');
+            document.getElementById('messengerInterface').classList.add('active');
+            isSecureChat = false;
+        }
+
+        function showSecureChatInterface() {
+            document.getElementById('welcomeScreen').classList.remove('active');
+            document.getElementById('messengerInterface').classList.remove('active');
+            document.getElementById('secureChatInterface').classList.add('active');
+            isSecureChat = true;
+            
+            document.getElementById('secureChatKey').textContent = currentSecureChatKey;
+        }
+
+        // Загрузка чатов
+        async function loadChats() {
+            try {
+                const response = await fetch('/api/get_chats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const chatsList = document.getElementById('chatsList');
+                    chatsList.innerHTML = '';
+                    
+                    data.chats.forEach(chat => {
+                        const chatItem = document.createElement('div');
+                        chatItem.className = 'chat-item';
+                        chatItem.innerHTML = `
+                            <div class="chat-name">Чат ${chat.chat_id}</div>
+                            <div class="chat-last-message">${chat.last_message || 'Нет сообщений'}</div>
+                        `;
+                        chatItem.onclick = () => selectChat(chat.chat_id);
+                        chatsList.appendChild(chatItem);
+                    });
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки чатов:', error);
+            }
+        }
+
+        // Выбор чата
+        async function selectChat(chatId) {
+            currentChatId = chatId;
+            document.getElementById('chatTitle').textContent = `Чат ${chatId}`;
+            
+            // Подключаемся к чату через WebSocket
+            socket.emit('join_chat', { chat_id: chatId });
+            
+            // Загружаем сообщения
+            try {
+                const response = await fetch('/api/get_messages', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ chat_id: chatId })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const messagesContainer = document.getElementById('messagesContainer');
+                    messagesContainer.innerHTML = '';
+                    
+                    data.messages.reverse().forEach(message => {
+                        const isOwn = message.sender_id === currentUser.user_id;
+                        addMessage(message.content, message.sender_name, isOwn);
+                    });
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки сообщений:', error);
+            }
+        }
+
+        // Отправка сообщения
+        function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const content = messageInput.value.trim();
+            
+            if (!content || !currentChatId) return;
+            
+            socket.emit('send_message', {
+                chat_id: currentChatId,
+                content: content,
+                message_type: 'normal'
+            });
+            
+            addMessage(content, currentUser.display_name, true);
+            messageInput.value = '';
+        }
+
+        // Отправка защищенного сообщения
+        function sendSecureMessage() {
+            const messageInput = document.getElementById('secureMessageInput');
+            const content = messageInput.value.trim();
+            
+            if (!content || !currentSecureChatKey) return;
+            
+            socket.emit('send_secure_message', {
+                chat_key: currentSecureChatKey,
+                content: content
+            });
+            
+            addSecureMessage(content, currentUser ? currentUser.display_name : 'Вы');
+            messageInput.value = '';
+        }
+
+        // Добавление сообщения
+        function addMessage(content, sender, isOwn) {
+            const messagesContainer = document.getElementById('messagesContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isOwn ? 'sent' : 'received'}`;
+            messageDiv.innerHTML = `
+                <div>${content}</div>
+                <div class="message-info">${sender} • ${new Date().toLocaleTimeString()}</div>
+            `;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Добавление защищенного сообщения
+        function addSecureMessage(content, sender) {
+            const messagesContainer = document.getElementById('secureMessagesContainer');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender === (currentUser ? currentUser.display_name : 'Вы') ? 'sent' : 'received'}`;
+            messageDiv.innerHTML = `
+                <div>🔐 ${content}</div>
+                <div class="message-info">${sender} • ${new Date().toLocaleTimeString()}</div>
+            `;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // Обновление статуса защищенного чата
+        function updateSecureChatStatus(status, type = 'info') {
+            const statusElement = document.getElementById('secureChatStatus');
+            statusElement.textContent = status;
+            statusElement.className = `secure-chat-status ${type}`;
+        }
+
+        // Выход из защищенного чата
+        function exitSecureChat() {
+            if (currentSecureChatKey) {
+                socket.emit('leave_secure_chat', { chat_key: currentSecureChatKey });
+            }
+            
+            currentSecureChatKey = null;
+            isSecureChat = false;
+            
+            document.getElementById('welcomeScreen').classList.add('active');
+            document.getElementById('secureChatInterface').classList.remove('active');
+            document.getElementById('messengerInterface').classList.remove('active');
+        }
+
+        // Обработка нажатий клавиш
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function handleSecureKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendSecureMessage();
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            initSocket();
+        });
+    </script>
+</body>
+</html>
