@@ -625,9 +625,14 @@
                         <div class="user-info">
                             <div class="user-name" id="userDisplayName">Пользователь</div>
                         </div>
-                        <button class="btn btn-secondary btn-mini" onclick="logout()" style="padding: 8px 12px; font-size: 0.8rem;">
-                            Выйти
-                        </button>
+                        <div style="display: flex; gap: 5px;">
+                            <button class="btn btn-secondary btn-mini" onclick="showSettings()" style="padding: 8px 12px; font-size: 0.8rem;">
+                                ⚙️
+                            </button>
+                            <button class="btn btn-secondary btn-mini" onclick="logout()" style="padding: 8px 12px; font-size: 0.8rem;">
+                                Выйти
+                            </button>
+                        </div>
                     </div>
                     
                     <input type="text" class="search-box" placeholder="Поиск пользователей..." id="searchInput">
@@ -654,7 +659,7 @@
                         </div>
                     </div>
                     
-                    <div class="message-input-area">
+                    <div class="message-input-area" id="messageInputArea" style="display: none;">
                         <div class="message-input-container">
                             <input type="text" class="message-input" placeholder="Введите сообщение..." id="messageInput" onkeypress="handleKeyPress(event)">
                             <button class="send-btn" onclick="sendMessage()">📤</button>
@@ -834,6 +839,43 @@
         </div>
     </div>
 
+    <!-- Модальное окно настроек -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Настройки</h2>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #e0e0e0; margin-bottom: 15px;">Информация об аккаунте</h3>
+                <div style="background: rgba(44, 44, 46, 0.6); padding: 15px; border-radius: 12px; margin-bottom: 15px;">
+                    <div><strong>Имя:</strong> <span id="settingsDisplayName">-</span></div>
+                    <div><strong>Логин:</strong> <span id="settingsUsername">-</span></div>
+                    <div><strong>ID:</strong> <span id="settingsUserId">-</span></div>
+                </div>
+                
+                <h3 style="color: #e0e0e0; margin-bottom: 15px;">Настройки уведомлений</h3>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <input type="checkbox" id="soundNotifications" checked>
+                    <label for="soundNotifications" style="color: #e0e0e0;">Звуковые уведомления</label>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <input type="checkbox" id="autoUpdate" checked>
+                    <label for="autoUpdate" style="color: #e0e0e0;">Автоматическое обновление</label>
+                </div>
+                
+                <h3 style="color: #e0e0e0; margin-bottom: 15px;">Действия</h3>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn btn-primary btn-small" onclick="exportChatHistory()">📤 Экспорт истории</button>
+                    <button class="btn btn-secondary btn-small" onclick="clearChatHistory()">🗑️ Очистить историю</button>
+                    <button class="btn btn-secondary btn-small" onclick="changePassword()">🔑 Сменить пароль</button>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('settingsModal')">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Глобальные переменные
         let currentUser = null;
@@ -889,6 +931,15 @@
 
         function showNewChatModal() {
             showModal('newChatModal');
+        }
+
+        function showSettings() {
+            if (currentUser) {
+                document.getElementById('settingsDisplayName').textContent = currentUser.display_name;
+                document.getElementById('settingsUsername').textContent = currentUser.username;
+                document.getElementById('settingsUserId').textContent = currentUser.user_id;
+            }
+            showModal('settingsModal');
         }
 
         // API функции
@@ -1086,6 +1137,9 @@
         async function selectChat(chatId) {
             currentChatId = chatId;
             document.getElementById('chatTitle').textContent = `Чат ${chatId}`;
+            
+            // Показываем поле ввода сообщений
+            document.getElementById('messageInputArea').style.display = 'block';
             
             // Загружаем сообщения
             const data = await apiRequest('get_messages', {
@@ -1361,12 +1415,30 @@
             // Останавливаем автообновление
             stopAutoUpdate();
             
+            // Скрываем поле ввода
+            document.getElementById('messageInputArea').style.display = 'none';
+            
             // Возвращаемся на экран приветствия
             document.getElementById('welcomeScreen').classList.add('active');
             document.getElementById('messengerInterface').classList.remove('active');
             document.getElementById('secureChatInterface').classList.remove('active');
             
             showNotification('Вы вышли из системы', 'info');
+        }
+
+        // Функции настроек
+        function exportChatHistory() {
+            showNotification('Функция экспорта будет добавлена в следующей версии', 'info');
+        }
+
+        function clearChatHistory() {
+            if (confirm('Вы уверены, что хотите очистить историю чатов? Это действие нельзя отменить.')) {
+                showNotification('Функция очистки будет добавлена в следующей версии', 'info');
+            }
+        }
+
+        function changePassword() {
+            showNotification('Функция смены пароля будет добавлена в следующей версии', 'info');
         }
 
         // Инициализация при загрузке страницы

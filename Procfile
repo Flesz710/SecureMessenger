@@ -1,2 +1,2 @@
-web: python simple_web_server.py
+web: python simple_web_server_enhanced.py
 
