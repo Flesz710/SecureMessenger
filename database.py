@@ -180,6 +180,27 @@ class DatabaseManager:
         except Exception as e:
             return None
     
+    def clear_user_chat_history(self, user_id):
+        """Очистка истории чатов пользователя"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Получаем все чаты пользователя
+            cursor.execute("SELECT chat_id FROM chat_participants WHERE user_id = ?", (user_id,))
+            user_chats = cursor.fetchall()
+            
+            # Удаляем сообщения из всех чатов пользователя
+            for (chat_id,) in user_chats:
+                cursor.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+        except Exception as e:
+            return False
+    
     def get_user_chats(self, user_id):
         """Получение чатов пользователя"""
         try:
@@ -355,3 +376,64 @@ class DatabaseManager:
             return True
         except Exception as e:
             return False
+    
+    def save_secure_message(self, chat_key, sender_id, content):
+        """Сохранение защищенного сообщения"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Получаем chat_id по ключу
+            cursor.execute("SELECT chat_id FROM secure_chats WHERE chat_key = ?", (chat_key,))
+            result = cursor.fetchone()
+            
+            if not result:
+                conn.close()
+                return False
+            
+            chat_id = result[0]
+            
+            # Сохраняем сообщение
+            cursor.execute('''
+                INSERT INTO messages (chat_id, sender_id, content, message_type)
+                VALUES (?, ?, ?, 'secure')
+            ''', (chat_id, sender_id, content))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+        except Exception as e:
+            return False
+    
+    def get_secure_messages(self, chat_key):
+        """Получение защищенных сообщений"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Получаем chat_id по ключу
+            cursor.execute("SELECT chat_id FROM secure_chats WHERE chat_key = ?", (chat_key,))
+            result = cursor.fetchone()
+            
+            if not result:
+                conn.close()
+                return []
+            
+            chat_id = result[0]
+            
+            # Получаем сообщения
+            cursor.execute('''
+                SELECT m.content, u.display_name, m.created_at
+                FROM messages m
+                JOIN users u ON m.sender_id = u.id
+                WHERE m.chat_id = ? AND m.message_type = 'secure'
+                ORDER BY m.created_at ASC
+            ''', (chat_id,))
+            
+            messages = cursor.fetchall()
+            conn.close()
+            
+            return [{"content": msg[0], "sender": msg[1], "created_at": msg[2]} for msg in messages]
+        except Exception as e:
+            return []

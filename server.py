@@ -79,6 +79,8 @@ class SecureMessengerServer:
                         self.handle_register(client_socket, message_data)
                     elif message_type == 'find_user':
                         self.handle_find_user(client_socket, message_data)
+                    elif message_type == 'create_chat':
+                        self.handle_create_chat(client_socket, message_data)
                     elif message_type == 'get_chats':
                         self.handle_get_chats(client_socket, message_data)
                     elif message_type == 'get_messages':
@@ -89,6 +91,8 @@ class SecureMessengerServer:
                         self.handle_create_secure_chat(client_socket, message_data)
                     elif message_type == 'join_secure_chat':
                         self.handle_join_secure_chat(client_socket, message_data)
+                    elif message_type == 'clear_chat_history':
+                        self.handle_clear_chat_history(client_socket, message_data)
                     elif message_type == 'disconnect':
                         break
                         
@@ -164,6 +168,39 @@ class SecureMessengerServer:
             'type': 'find_user_response',
             'success': user_data is not None,
             'user_data': user_data
+        }
+        
+        self.send_message(client_socket, json.dumps(response))
+    
+    def handle_clear_chat_history(self, client_socket, message_data):
+        """Обработка очистки истории чатов"""
+        if client_socket not in self.clients:
+            return
+        
+        user_id = self.clients[client_socket]['user_id']
+        success = self.db.clear_user_chat_history(user_id)
+        
+        response = {
+            'type': 'clear_chat_history_response',
+            'success': success
+        }
+        
+        self.send_message(client_socket, json.dumps(response))
+    
+    def handle_create_chat(self, client_socket, message_data):
+        """Обработка создания чата"""
+        if client_socket not in self.clients:
+            return
+        
+        user1_id = self.clients[client_socket]['user_id']
+        user2_id = message_data.get('user_id')
+        
+        chat_id = self.db.get_or_create_private_chat(user1_id, user2_id)
+        
+        response = {
+            'type': 'create_chat_response',
+            'success': chat_id is not None,
+            'chat_id': chat_id
         }
         
         self.send_message(client_socket, json.dumps(response))
@@ -278,6 +315,37 @@ class SecureMessengerServer:
                 'success': False,
                 'error': 'Неверный ключ шифрования'
             }
+        
+        self.send_message(client_socket, json.dumps(response))
+    
+    def handle_send_secure_message(self, client_socket, message_data):
+        """Обработка отправки защищенного сообщения"""
+        if client_socket not in self.clients:
+            return
+        
+        sender_id = self.clients[client_socket]['user_id']
+        chat_key = message_data.get('chat_key')
+        content = message_data.get('content', '')
+        
+        success = self.db.save_secure_message(chat_key, sender_id, content)
+        
+        response = {
+            'type': 'send_secure_message_response',
+            'success': success
+        }
+        
+        self.send_message(client_socket, json.dumps(response))
+    
+    def handle_get_secure_messages(self, client_socket, message_data):
+        """Обработка получения защищенных сообщений"""
+        chat_key = message_data.get('chat_key')
+        messages = self.db.get_secure_messages(chat_key)
+        
+        response = {
+            'type': 'get_secure_messages_response',
+            'success': True,
+            'messages': messages
+        }
         
         self.send_message(client_socket, json.dumps(response))
     

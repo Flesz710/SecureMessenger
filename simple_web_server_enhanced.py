@@ -160,6 +160,8 @@ class EnhancedHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return self.messenger_server.handle_send_secure_message(request_data)
             elif api_path == 'get_secure_messages':
                 return self.messenger_server.handle_get_secure_messages(request_data)
+            elif api_path == 'clear_chat_history':
+                return self.messenger_server.handle_clear_chat_history(request_data)
             else:
                 return {"success": False, "error": f"Unknown API endpoint: {api_path}"}
                 
