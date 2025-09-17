@@ -34,48 +34,47 @@ class CryptoManager:
         """Установка готового ключа"""
         self.key = key
         self.fernet = Fernet(key)
-        
-    def encrypt_message(self, message, salt=None):
-        """Шифрование сообщения"""
-        if not self.fernet:
-            raise ValueError("Ключ не установлен")
-            
-        if salt is None:
-            salt = os.urandom(16)
-            
-        # Генерируем ключ с солью
-        self.generate_key_from_password(self.key.decode(), salt)
-        
-        # Шифруем сообщение
-        encrypted_message = self.fernet.encrypt(message.encode())
-        
-        # Возвращаем соль + зашифрованное сообщение
-        return base64.urlsafe_b64encode(salt + encrypted_message).decode()
-        
-    def decrypt_message(self, encrypted_data):
-        """Расшифрование сообщения"""
-        if not self.fernet:
-            raise ValueError("Ключ не установлен")
-            
+    
+    def generate_key(self):
+        """Генерация нового ключа Fernet"""
+        key = Fernet.generate_key()
+        return key.decode()  # Возвращаем как строку
+    
+    def encrypt_message(self, message, key):
+        """Шифрование сообщения с заданным ключом"""
         try:
-            # Декодируем данные
-            data = base64.urlsafe_b64decode(encrypted_data.encode())
+            # Если ключ строка, конвертируем в bytes
+            if isinstance(key, str):
+                key = key.encode()
             
-            # Извлекаем соль и зашифрованное сообщение
-            salt = data[:16]
-            encrypted_message = data[16:]
+            # Создаем Fernet с ключом
+            fernet = Fernet(key)
             
-            # Генерируем ключ с солью
-            self.generate_key_from_password(self.key.decode(), salt)
+            # Шифруем сообщение
+            encrypted_message = fernet.encrypt(message.encode())
+            return encrypted_message.decode()  # Возвращаем как строку
+        except Exception as e:
+            raise ValueError(f"Ошибка шифрования: {e}")
+    
+    def decrypt_message(self, encrypted_message, key):
+        """Расшифровка сообщения с заданным ключом"""
+        try:
+            # Если ключ строка, конвертируем в bytes
+            if isinstance(key, str):
+                key = key.encode()
+            
+            # Создаем Fernet с ключом
+            fernet = Fernet(key)
+            
+            # Если сообщение строка, конвертируем в bytes
+            if isinstance(encrypted_message, str):
+                encrypted_message = encrypted_message.encode()
             
             # Расшифровываем сообщение
-            decrypted_message = self.fernet.decrypt(encrypted_message)
+            decrypted_message = fernet.decrypt(encrypted_message)
             return decrypted_message.decode()
-            
-        except InvalidToken:
-            raise ValueError("Неверный ключ или поврежденные данные")
         except Exception as e:
-            raise ValueError(f"Ошибка расшифрования: {str(e)}")
+            raise ValueError(f"Ошибка расшифровки: {e}")
             
     def generate_random_key(self):
         """Генерация случайного ключа"""

@@ -274,28 +274,24 @@ class SecureMessengerServer:
         if client_socket not in self.clients:
             return
         
-        user1_id = self.clients[client_socket]['user_id']
-        user2_id = message_data.get('user_id')
+        chat_key = message_data.get('chat_key')
         encryption_key = message_data.get('encryption_key')
         
-        # Создаем или получаем чат
-        chat_id = self.db.get_or_create_private_chat(user1_id, user2_id)
+        # Создаем защищенную сессию
+        session_data = self.db.create_secure_chat_session(chat_key, encryption_key)
         
-        if chat_id:
-            # Создаем защищенную сессию
-            session_id = self.db.create_secure_chat_session(chat_id, encryption_key)
-            
+        if session_data:
             response = {
                 'type': 'create_secure_chat_response',
                 'success': True,
-                'chat_id': chat_id,
-                'session_id': session_id
+                'chat_key': session_data['chat_key'],
+                'session_id': session_data['session_id']
             }
         else:
             response = {
                 'type': 'create_secure_chat_response',
                 'success': False,
-                'error': 'Не удалось создать чат'
+                'error': 'Не удалось создать защищенный чат'
             }
         
         self.send_message(client_socket, json.dumps(response))
@@ -305,23 +301,37 @@ class SecureMessengerServer:
         if client_socket not in self.clients:
             return
         
-        chat_id = message_data.get('chat_id')
+        chat_key = message_data.get('chat_key')
         encryption_key = message_data.get('encryption_key')
         
         # Проверяем сессию
-        session_data = self.db.get_secure_chat_session(chat_id)
+        session_data = self.db.get_secure_chat_session(chat_key)
         
-        if session_data and session_data['encryption_key'] == encryption_key:
-            response = {
-                'type': 'join_secure_chat_response',
-                'success': True,
-                'session_id': session_data['session_id']
-            }
+        if session_data:
+            # Если ключ шифрования не предоставлен или совпадает
+            if not encryption_key or session_data['encryption_key'] == encryption_key:
+                # Получаем существующие сообщения
+                messages = self.db.get_secure_messages(chat_key)
+                
+                response = {
+                    'type': 'join_secure_chat_response',
+                    'success': True,
+                    'chat_key': chat_key,
+                    'session_id': session_data['session_id'],
+                    'participants_count': 1,  # Пока упрощенно
+                    'messages': messages
+                }
+            else:
+                response = {
+                    'type': 'join_secure_chat_response',
+                    'success': False,
+                    'error': 'Неверный ключ шифрования'
+                }
         else:
             response = {
                 'type': 'join_secure_chat_response',
                 'success': False,
-                'error': 'Неверный ключ шифрования'
+                'error': 'Защищенный чат не найден'
             }
         
         self.send_message(client_socket, json.dumps(response))

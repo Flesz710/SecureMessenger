@@ -68,6 +68,7 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS secure_chats (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 chat_id INTEGER,
+                chat_key TEXT UNIQUE,
                 encryption_key TEXT,
                 session_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -340,42 +341,62 @@ class DatabaseManager:
         except Exception as e:
             return []
     
-    def create_secure_chat_session(self, chat_id, encryption_key):
+    def create_secure_chat_session(self, chat_key, encryption_key=None):
         """Создание защищенной сессии чата"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
+            # Генерируем ключ шифрования если не предоставлен
+            if not encryption_key:
+                encryption_key = self.crypto_manager.generate_key()
+            
+            # Создаем новый чат
+            cursor.execute('''
+                INSERT INTO chats (chat_type) VALUES ('secure')
+            ''')
+            chat_id = cursor.lastrowid
+            
+            # Добавляем участников (пока пустой чат)
             session_id = str(uuid.uuid4())
             
             cursor.execute('''
-                INSERT INTO secure_chats (chat_id, encryption_key, session_id)
-                VALUES (?, ?, ?)
-            ''', (chat_id, encryption_key, session_id))
+                INSERT INTO secure_chats (chat_id, chat_key, encryption_key, session_id)
+                VALUES (?, ?, ?, ?)
+            ''', (chat_id, chat_key, encryption_key, session_id))
             
             conn.commit()
             conn.close()
             
-            return session_id
+            return {
+                'chat_id': chat_id,
+                'chat_key': chat_key,
+                'session_id': session_id,
+                'encryption_key': encryption_key
+            }
         except Exception as e:
             return None
     
-    def get_secure_chat_session(self, chat_id):
-        """Получение защищенной сессии чата"""
+    def get_secure_chat_session(self, chat_key):
+        """Получение защищенной сессии чата по ключу"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
             cursor.execute('''
-                SELECT encryption_key, session_id FROM secure_chats
-                WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1
-            ''', (chat_id,))
+                SELECT chat_id, encryption_key, session_id FROM secure_chats
+                WHERE chat_key = ? ORDER BY created_at DESC LIMIT 1
+            ''', (chat_key,))
             
             session_data = cursor.fetchone()
             conn.close()
             
             if session_data:
-                return {"encryption_key": session_data[0], "session_id": session_data[1]}
+                return {
+                    "chat_id": session_data[0],
+                    "encryption_key": session_data[1], 
+                    "session_id": session_data[2]
+                }
             return None
         except Exception as e:
             return None
@@ -405,21 +426,28 @@ class DatabaseManager:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Получаем chat_id по ключу
-            cursor.execute("SELECT chat_id FROM secure_chats WHERE chat_key = ?", (chat_key,))
+            # Получаем chat_id и ключ шифрования по ключу чата
+            cursor.execute("SELECT chat_id, encryption_key FROM secure_chats WHERE chat_key = ?", (chat_key,))
             result = cursor.fetchone()
             
             if not result:
                 conn.close()
                 return False
             
-            chat_id = result[0]
+            chat_id, encryption_key = result
+            
+            # Шифруем сообщение
+            try:
+                encrypted_content = self.crypto_manager.encrypt_message(content, encryption_key)
+            except Exception as e:
+                # Если шифрование не удалось, сохраняем как обычное сообщение
+                encrypted_content = None
             
             # Сохраняем сообщение
             cursor.execute('''
-                INSERT INTO messages (chat_id, sender_id, content, message_type)
-                VALUES (?, ?, ?, 'secure')
-            ''', (chat_id, sender_id, content))
+                INSERT INTO messages (chat_id, sender_id, content, encrypted_content, message_type)
+                VALUES (?, ?, ?, ?, 'secure')
+            ''', (chat_id, sender_id, content, encrypted_content))
             
             conn.commit()
             conn.close()
@@ -434,19 +462,19 @@ class DatabaseManager:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Получаем chat_id по ключу
-            cursor.execute("SELECT chat_id FROM secure_chats WHERE chat_key = ?", (chat_key,))
+            # Получаем chat_id и ключ шифрования по ключу чата
+            cursor.execute("SELECT chat_id, encryption_key FROM secure_chats WHERE chat_key = ?", (chat_key,))
             result = cursor.fetchone()
             
             if not result:
                 conn.close()
                 return []
             
-            chat_id = result[0]
+            chat_id, encryption_key = result
             
             # Получаем сообщения
             cursor.execute('''
-                SELECT m.content, u.display_name, m.created_at
+                SELECT m.content, m.encrypted_content, u.display_name, m.created_at
                 FROM messages m
                 JOIN users u ON m.sender_id = u.id
                 WHERE m.chat_id = ? AND m.message_type = 'secure'
@@ -456,7 +484,26 @@ class DatabaseManager:
             messages = cursor.fetchall()
             conn.close()
             
-            return [{"content": msg[0], "sender": msg[1], "created_at": msg[2]} for msg in messages]
+            result_messages = []
+            for msg in messages:
+                content, encrypted_content, sender, created_at = msg
+                
+                # Пытаемся расшифровать, если есть зашифрованное содержимое
+                if encrypted_content:
+                    try:
+                        decrypted_content = self.crypto_manager.decrypt_message(encrypted_content, encryption_key)
+                        content = decrypted_content
+                    except Exception as e:
+                        # Если расшифровка не удалась, используем обычное содержимое
+                        pass
+                
+                result_messages.append({
+                    "content": content,
+                    "sender": sender,
+                    "created_at": created_at
+                })
+            
+            return result_messages
         except Exception as e:
             return []
     
