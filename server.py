@@ -93,6 +93,14 @@ class SecureMessengerServer:
                         self.handle_join_secure_chat(client_socket, message_data)
                     elif message_type == 'clear_chat_history':
                         self.handle_clear_chat_history(client_socket, message_data)
+                    elif message_type == 'close_secure_chat':
+                        self.handle_close_secure_chat(client_socket, message_data)
+                    elif message_type == 'auto_close_secure_chat':
+                        self.handle_auto_close_secure_chat(client_socket, message_data)
+                    elif message_type == 'get_chat_info':
+                        self.handle_get_chat_info(client_socket, message_data)
+                    elif message_type == 'change_display_name':
+                        self.handle_change_display_name(client_socket, message_data)
                     elif message_type == 'disconnect':
                         break
                         
@@ -345,6 +353,71 @@ class SecureMessengerServer:
             'type': 'get_secure_messages_response',
             'success': True,
             'messages': messages
+        }
+        
+        self.send_message(client_socket, json.dumps(response))
+    
+    def handle_close_secure_chat(self, client_socket, message_data):
+        """Обработка закрытия защищенного чата"""
+        if client_socket not in self.clients:
+            return
+        
+        chat_key = message_data.get('chat_key')
+        success = self.db.close_secure_chat(chat_key)
+        
+        response = {
+            'type': 'close_secure_chat_response',
+            'success': success
+        }
+        
+        self.send_message(client_socket, json.dumps(response))
+    
+    def handle_auto_close_secure_chat(self, client_socket, message_data):
+        """Обработка автоматического закрытия защищенного чата"""
+        chat_key = message_data.get('chat_key')
+        success = self.db.close_secure_chat(chat_key)
+        
+        response = {
+            'type': 'auto_close_secure_chat_response',
+            'success': success
+        }
+        
+        self.send_message(client_socket, json.dumps(response))
+    
+    def handle_get_chat_info(self, client_socket, message_data):
+        """Обработка получения информации о чате"""
+        if client_socket not in self.clients:
+            return
+        
+        user_id = self.clients[client_socket]['user_id']
+        chat_id = message_data.get('chat_id')
+        chat_info = self.db.get_chat_info(user_id, chat_id)
+        
+        response = {
+            'type': 'get_chat_info_response',
+            'success': chat_info is not None,
+            'chat_info': chat_info
+        }
+        
+        self.send_message(client_socket, json.dumps(response))
+    
+    def handle_change_display_name(self, client_socket, message_data):
+        """Обработка изменения имени пользователя"""
+        if client_socket not in self.clients:
+            return
+        
+        user_id = self.clients[client_socket]['user_id']
+        new_display_name = message_data.get('new_display_name')
+        
+        success = self.db.change_display_name(user_id, new_display_name)
+        
+        if success:
+            # Обновляем информацию о пользователе в клиентах
+            self.clients[client_socket]['display_name'] = new_display_name
+        
+        response = {
+            'type': 'change_display_name_response',
+            'success': success
         }
         
         self.send_message(client_socket, json.dumps(response))

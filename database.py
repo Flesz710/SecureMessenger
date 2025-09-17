@@ -210,18 +210,40 @@ class DatabaseManager:
             cursor.execute('''
                 SELECT DISTINCT c.id, c.chat_type, c.created_at,
                        (SELECT COUNT(*) FROM messages WHERE chat_id = c.id) as message_count,
-                       (SELECT content FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message
+                       (SELECT content FROM messages WHERE chat_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+                       GROUP_CONCAT(u.display_name, ', ') as participants
                 FROM chats c
                 JOIN chat_participants cp ON c.id = cp.chat_id
-                WHERE cp.user_id = ?
+                JOIN users u ON cp.user_id = u.id
+                WHERE c.id IN (
+                    SELECT chat_id FROM chat_participants WHERE user_id = ?
+                )
+                GROUP BY c.id
                 ORDER BY c.created_at DESC
             ''', (user_id,))
             
             chats = cursor.fetchall()
             conn.close()
             
-            return [{"chat_id": chat[0], "chat_type": chat[1], "created_at": chat[2], 
-                    "message_count": chat[3], "last_message": chat[4]} for chat in chats]
+            result = []
+            for chat in chats:
+                chat_id, chat_type, created_at, message_count, last_message, participants = chat
+                
+                # Формируем имя чата из имен участников (исключая текущего пользователя)
+                participant_names = [name.strip() for name in participants.split(',') if name.strip() != '']
+                current_user_name = self.get_user_display_name(user_id)
+                chat_name = ', '.join([name for name in participant_names if name != current_user_name])
+                
+                result.append({
+                    "chat_id": chat_id,
+                    "chat_type": chat_type,
+                    "created_at": created_at,
+                    "message_count": message_count,
+                    "last_message": last_message,
+                    "chat_name": chat_name or f"Чат {chat_id}"
+                })
+            
+            return result
         except Exception as e:
             return []
     
@@ -437,3 +459,108 @@ class DatabaseManager:
             return [{"content": msg[0], "sender": msg[1], "created_at": msg[2]} for msg in messages]
         except Exception as e:
             return []
+    
+    def close_secure_chat(self, chat_key):
+        """Закрытие защищенного чата"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Получаем chat_id по ключу
+            cursor.execute("SELECT chat_id FROM secure_chats WHERE chat_key = ?", (chat_key,))
+            result = cursor.fetchone()
+            
+            if not result:
+                conn.close()
+                return False
+            
+            chat_id = result[0]
+            
+            # Удаляем сообщения защищенного чата
+            cursor.execute("DELETE FROM messages WHERE chat_id = ? AND message_type = 'secure'", (chat_id,))
+            
+            # Удаляем сессию защищенного чата
+            cursor.execute("DELETE FROM secure_chats WHERE chat_key = ?", (chat_key,))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+        except Exception as e:
+            return False
+    
+    def get_chat_info(self, user_id, chat_id):
+        """Получение информации о чате"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Получаем информацию о чате и участниках
+            cursor.execute('''
+                SELECT c.id, c.chat_type, c.created_at,
+                       GROUP_CONCAT(u.display_name, ', ') as participants
+                FROM chats c
+                JOIN chat_participants cp ON c.id = cp.chat_id
+                JOIN users u ON cp.user_id = u.id
+                WHERE c.id = ? AND c.id IN (
+                    SELECT chat_id FROM chat_participants WHERE user_id = ?
+                )
+                GROUP BY c.id
+            ''', (chat_id, user_id))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                chat_id, chat_type, created_at, participants = result
+                # Формируем имя чата из имен участников (исключая текущего пользователя)
+                participant_names = [name.strip() for name in participants.split(',') if name.strip() != '']
+                current_user_name = self.get_user_display_name(user_id)
+                chat_name = ', '.join([name for name in participant_names if name != current_user_name])
+                
+                return {
+                    "chat_id": chat_id,
+                    "chat_type": chat_type,
+                    "created_at": created_at,
+                    "chat_name": chat_name or f"Чат {chat_id}"
+                }
+            return None
+        except Exception as e:
+            return None
+    
+    def get_user_display_name(self, user_id):
+        """Получение имени пользователя по ID"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT display_name FROM users WHERE id = ?", (user_id,))
+            result = cursor.fetchone()
+            
+            conn.close()
+            
+            return result[0] if result else None
+        except Exception as e:
+            return None
+    
+    def change_display_name(self, user_id, new_display_name):
+        """Изменение имени пользователя"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Проверяем, что новое имя не занято
+            cursor.execute("SELECT id FROM users WHERE display_name = ? AND id != ?", (new_display_name, user_id))
+            if cursor.fetchone():
+                conn.close()
+                return False
+            
+            # Обновляем имя
+            cursor.execute("UPDATE users SET display_name = ? WHERE id = ?", (new_display_name, user_id))
+            
+            conn.commit()
+            conn.close()
+            
+            return True
+        except Exception as e:
+            return False

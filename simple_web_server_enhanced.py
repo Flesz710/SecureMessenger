@@ -162,6 +162,14 @@ class EnhancedHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 return self.messenger_server.handle_get_secure_messages(request_data)
             elif api_path == 'clear_chat_history':
                 return self.messenger_server.handle_clear_chat_history(request_data)
+            elif api_path == 'close_secure_chat':
+                return self.messenger_server.handle_close_secure_chat(request_data)
+            elif api_path == 'auto_close_secure_chat':
+                return self.messenger_server.handle_auto_close_secure_chat(request_data)
+            elif api_path == 'get_chat_info':
+                return self.messenger_server.handle_get_chat_info(request_data)
+            elif api_path == 'change_display_name':
+                return self.messenger_server.handle_change_display_name(request_data)
             else:
                 return {"success": False, "error": f"Unknown API endpoint: {api_path}"}
                 

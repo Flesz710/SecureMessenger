@@ -137,6 +137,17 @@
             box-shadow: 0 12px 40px rgba(142, 142, 147, 0.4);
         }
 
+        .btn-danger {
+            background: linear-gradient(135deg, #FF3B30 0%, #D70015 100%);
+            color: white;
+            box-shadow: 0 8px 32px rgba(255, 59, 48, 0.3);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 12px 40px rgba(255, 59, 48, 0.4);
+        }
+
         /* Модальные окна */
         .modal {
             display: none;
@@ -697,7 +708,8 @@
                 </div>
                 
                 <div style="padding: 20px; text-align: center;">
-                    <button class="btn btn-secondary" onclick="exitSecureChat()">Выйти из чата</button>
+                    <button class="btn btn-danger" onclick="closeSecureChat()" id="closeSecureChatBtn" style="display: none;">🗑️ Закрыть чат</button>
+                    <button class="btn btn-secondary" onclick="exitSecureChat()" id="exitSecureChatBtn">Выйти из чата</button>
                 </div>
             </div>
         </div>
@@ -865,6 +877,7 @@
                 
                 <h3 style="color: #e0e0e0; margin-bottom: 15px;">Действия</h3>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn btn-primary btn-small" onclick="showChangeNameModal()">✏️ Изменить имя</button>
                     <button class="btn btn-secondary btn-small" onclick="clearChatHistory()">🗑️ Очистить историю</button>
                     <button class="btn btn-secondary btn-small" onclick="changePassword()">🔑 Сменить пароль</button>
                 </div>
@@ -872,6 +885,29 @@
             <div class="form-actions">
                 <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('settingsModal')">Закрыть</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно изменения имени -->
+    <div id="changeNameModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>✏️ Изменить имя</h2>
+            </div>
+            <form onsubmit="handleChangeName(event)">
+                <div class="form-group">
+                    <label>Текущее имя:</label>
+                    <input type="text" id="currentDisplayName" readonly style="background: rgba(44, 44, 46, 0.5);">
+                </div>
+                <div class="form-group">
+                    <label>Новое имя:</label>
+                    <input type="text" id="newDisplayName" required placeholder="Введите новое имя">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-small">Изменить</button>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="closeModal('changeNameModal')">Отмена</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -884,6 +920,9 @@
         let sessionId = null;
         let messageUpdateInterval = null;
         let chatUpdateInterval = null;
+        let secureChatCreator = false;
+        let lastActivityTime = null;
+        let activityCheckInterval = null;
 
         // Показ уведомлений
         function showNotification(message, type = 'info') {
@@ -1028,10 +1067,13 @@
             if (data.success) {
                 currentSecureChatKey = data.chat_key;
                 isSecureChat = true;
+                secureChatCreator = true;
+                lastActivityTime = Date.now();
                 closeModal('createSecureChatModal');
                 showSecureChatInterface();
                 updateSecureChatStatus('Диалог создан. Ожидание участников...', 'info');
                 showNotification(`Диалог создан! Ключ: ${data.chat_key}`, 'success');
+                startActivityMonitoring();
             } else {
                 showNotification(data.error, 'error');
             }
@@ -1053,10 +1095,13 @@
             if (data.success) {
                 currentSecureChatKey = data.chat_key;
                 isSecureChat = true;
+                secureChatCreator = false;
+                lastActivityTime = Date.now();
                 closeModal('joinSecureChatModal');
                 showSecureChatInterface();
                 updateSecureChatStatus(`Подключено к диалогу. Участников: ${data.participants_count}`, 'connected');
                 showNotification('Подключено к защищенному чату', 'success');
+                startActivityMonitoring();
                 
                 // Загружаем существующие сообщения
                 if (data.messages) {
@@ -1110,6 +1155,15 @@
             isSecureChat = true;
             
             document.getElementById('secureChatKey').textContent = currentSecureChatKey;
+            
+            // Показываем правильную кнопку в зависимости от роли
+            if (secureChatCreator) {
+                document.getElementById('closeSecureChatBtn').style.display = 'inline-block';
+                document.getElementById('exitSecureChatBtn').style.display = 'none';
+            } else {
+                document.getElementById('closeSecureChatBtn').style.display = 'none';
+                document.getElementById('exitSecureChatBtn').style.display = 'inline-block';
+            }
         }
 
         // Загрузка чатов
@@ -1124,7 +1178,7 @@
                     const chatItem = document.createElement('div');
                     chatItem.className = 'chat-item';
                     chatItem.innerHTML = `
-                        <div class="chat-name">Чат ${chat.chat_id}</div>
+                        <div class="chat-name">${chat.chat_name || `Чат ${chat.chat_id}`}</div>
                         <div class="chat-last-message">${chat.last_message || 'Нет сообщений'}</div>
                     `;
                     chatItem.onclick = () => selectChat(chat.chat_id);
@@ -1136,7 +1190,18 @@
         // Выбор чата
         async function selectChat(chatId) {
             currentChatId = chatId;
-            document.getElementById('chatTitle').textContent = `Чат ${chatId}`;
+            
+            // Получаем информацию о чате для отображения имени
+            const chatInfo = await apiRequest('get_chat_info', {
+                session_id: sessionId,
+                chat_id: chatId
+            });
+            
+            if (chatInfo.success) {
+                document.getElementById('chatTitle').textContent = chatInfo.chat_name || `Чат ${chatId}`;
+            } else {
+                document.getElementById('chatTitle').textContent = `Чат ${chatId}`;
+            }
             
             // Показываем поле ввода сообщений
             document.getElementById('messageInputArea').style.display = 'block';
@@ -1196,6 +1261,9 @@
             const content = messageInput.value.trim();
             
             if (!content || !currentSecureChatKey) return;
+            
+            // Обновляем время активности
+            updateActivity();
             
             // Сразу показываем сообщение локально для быстрого отклика
             addSecureMessage(content, currentUser ? currentUser.display_name : 'Вы');
@@ -1269,15 +1337,94 @@
         function exitSecureChat() {
             currentSecureChatKey = null;
             isSecureChat = false;
+            secureChatCreator = false;
+            lastActivityTime = null;
             
-            // Останавливаем автообновление
+            // Останавливаем автообновление и мониторинг активности
             stopAutoUpdate();
+            stopActivityMonitoring();
             
             document.getElementById('welcomeScreen').classList.add('active');
             document.getElementById('secureChatInterface').classList.remove('active');
             document.getElementById('messengerInterface').classList.remove('active');
             
             showNotification('Вы вышли из защищенного чата', 'info');
+        }
+
+        // Закрытие защищенного чата (только для создателя)
+        async function closeSecureChat() {
+            if (!secureChatCreator) {
+                showNotification('Только создатель чата может его закрыть', 'error');
+                return;
+            }
+
+            if (confirm('Вы уверены, что хотите закрыть этот защищенный чат? Все участники будут отключены, а ключ освободится.')) {
+                try {
+                    const data = await apiRequest('close_secure_chat', {
+                        session_id: sessionId,
+                        chat_key: currentSecureChatKey
+                    });
+                    
+                    if (data.success) {
+                        showNotification('Защищенный чат закрыт', 'success');
+                        exitSecureChat();
+                    } else {
+                        showNotification(data.error || 'Ошибка закрытия чата', 'error');
+                    }
+                } catch (error) {
+                    showNotification('Ошибка при закрытии чата', 'error');
+                }
+            }
+        }
+
+        // Мониторинг активности в защищенном чате
+        function startActivityMonitoring() {
+            if (activityCheckInterval) {
+                clearInterval(activityCheckInterval);
+            }
+            
+            activityCheckInterval = setInterval(() => {
+                if (isSecureChat && currentSecureChatKey) {
+                    const now = Date.now();
+                    const timeSinceActivity = now - lastActivityTime;
+                    const tenMinutes = 10 * 60 * 1000; // 10 минут в миллисекундах
+                    
+                    if (timeSinceActivity > tenMinutes) {
+                        showNotification('Чат неактивен более 10 минут. Чат будет закрыт.', 'error');
+                        autoCloseSecureChat();
+                    }
+                }
+            }, 60000); // Проверяем каждую минуту
+        }
+
+        // Остановка мониторинга активности
+        function stopActivityMonitoring() {
+            if (activityCheckInterval) {
+                clearInterval(activityCheckInterval);
+                activityCheckInterval = null;
+            }
+        }
+
+        // Автоматическое закрытие неактивного чата
+        async function autoCloseSecureChat() {
+            try {
+                const data = await apiRequest('auto_close_secure_chat', {
+                    chat_key: currentSecureChatKey
+                });
+                
+                showNotification('Чат автоматически закрыт из-за неактивности', 'info');
+                exitSecureChat();
+            } catch (error) {
+                showNotification('Ошибка автоматического закрытия чата', 'error');
+                exitSecureChat();
+            }
+        }
+
+        // Обновление времени последней активности
+        function updateActivity() {
+            if (isSecureChat) {
+                lastActivityTime = Date.now();
+            }
         }
 
         // Обработка нажатий клавиш
@@ -1456,6 +1603,59 @@
 
         function changePassword() {
             showNotification('Функция смены пароля будет добавлена в следующей версии', 'info');
+        }
+
+        // Показ модального окна изменения имени
+        function showChangeNameModal() {
+            if (currentUser) {
+                document.getElementById('currentDisplayName').value = currentUser.display_name;
+                document.getElementById('newDisplayName').value = '';
+            }
+            showModal('changeNameModal');
+        }
+
+        // Обработка изменения имени
+        async function handleChangeName(event) {
+            event.preventDefault();
+            
+            const newName = document.getElementById('newDisplayName').value.trim();
+            
+            if (!newName) {
+                showNotification('Введите новое имя', 'error');
+                return;
+            }
+            
+            if (newName === currentUser.display_name) {
+                showNotification('Новое имя должно отличаться от текущего', 'error');
+                return;
+            }
+            
+            try {
+                const data = await apiRequest('change_display_name', {
+                    session_id: sessionId,
+                    new_display_name: newName
+                });
+                
+                if (data.success) {
+                    // Обновляем текущего пользователя
+                    currentUser.display_name = newName;
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    
+                    // Обновляем отображение
+                    document.getElementById('userDisplayName').textContent = newName;
+                    document.getElementById('settingsDisplayName').textContent = newName;
+                    
+                    closeModal('changeNameModal');
+                    showNotification('Имя успешно изменено', 'success');
+                    
+                    // Обновляем список чатов
+                    loadChats();
+                } else {
+                    showNotification(data.error || 'Ошибка изменения имени', 'error');
+                }
+            } catch (error) {
+                showNotification('Ошибка при изменении имени', 'error');
+            }
         }
 
         // Показ секретной фразы после регистрации
