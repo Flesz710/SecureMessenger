@@ -611,3 +611,39 @@ class DatabaseManager:
             return True
         except Exception as e:
             return False
+    
+    def get_all_chats(self):
+        """Получение всех чатов для веб-API"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT c.id, c.chat_type, c.created_at,
+                       GROUP_CONCAT(u.display_name, ', ') as participants
+                FROM chats c
+                LEFT JOIN chat_participants cp ON c.id = cp.chat_id
+                LEFT JOIN users u ON cp.user_id = u.id
+                GROUP BY c.id
+                ORDER BY c.created_at DESC
+            ''')
+            
+            chats = cursor.fetchall()
+            conn.close()
+            
+            result = []
+            for chat in chats:
+                chat_id, chat_type, created_at, participants = chat
+                chat_name = participants if participants else f"Чат {chat_id}"
+                
+                result.append({
+                    'chat_id': chat_id,
+                    'chat_type': chat_type,
+                    'chat_name': chat_name,
+                    'created_at': created_at,
+                    'last_message': None  # Можно добавить позже
+                })
+            
+            return result
+        except Exception as e:
+            return []

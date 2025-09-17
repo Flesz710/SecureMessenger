@@ -2,6 +2,7 @@ import socket
 import threading
 import json
 import logging
+import uuid
 from datetime import datetime
 from database import DatabaseManager
 
@@ -431,6 +432,294 @@ class SecureMessengerServer:
         }
         
         self.send_message(client_socket, json.dumps(response))
+    
+    # Веб-API методы для работы с HTTP запросами
+    def handle_login(self, request_data):
+        """Обработка входа через веб-API"""
+        username = request_data.get('username', '')
+        password = request_data.get('password', '')
+        
+        success, result = self.db.authenticate_user(username, password)
+        
+        if success:
+            user_data = result
+            response = {
+                'success': True,
+                'user_data': user_data,
+                'session_id': str(uuid.uuid4())  # Генерируем сессию для веб-API
+            }
+        else:
+            response = {
+                'success': False,
+                'error': result
+            }
+        
+        return response
+    
+    def handle_register(self, request_data):
+        """Обработка регистрации через веб-API"""
+        username = request_data.get('username', '')
+        display_name = request_data.get('display_name', '')
+        password = request_data.get('password', '')
+        
+        success, result = self.db.register_user(username, display_name, password)
+        
+        if success:
+            response = {
+                'success': True,
+                'secret_phrase': result
+            }
+        else:
+            response = {
+                'success': False,
+                'error': result
+            }
+        
+        return response
+    
+    def handle_get_chats(self, request_data):
+        """Обработка получения чатов через веб-API"""
+        session_id = request_data.get('session_id')
+        if not session_id:
+            return {'success': False, 'error': 'Session ID required'}
+        
+        # Для упрощения, получаем чаты для всех пользователей
+        # В реальном приложении нужно проверять сессию
+        chats = self.db.get_all_chats()
+        
+        return {
+            'success': True,
+            'chats': chats
+        }
+    
+    def handle_get_messages(self, request_data):
+        """Обработка получения сообщений через веб-API"""
+        chat_id = request_data.get('chat_id')
+        limit = request_data.get('limit', 50)
+        
+        messages = self.db.get_chat_messages(chat_id, limit)
+        
+        return {
+            'success': True,
+            'chat_id': chat_id,
+            'messages': messages
+        }
+    
+    def handle_send_message(self, request_data):
+        """Обработка отправки сообщения через веб-API"""
+        session_id = request_data.get('session_id')
+        chat_id = request_data.get('chat_id')
+        content = request_data.get('content', '')
+        message_type = request_data.get('message_type', 'normal')
+        
+        if not session_id or not chat_id:
+            return {'success': False, 'error': 'Session ID and chat ID required'}
+        
+        # Для упрощения, используем фиктивный sender_id
+        # В реальном приложении нужно получать user_id из сессии
+        sender_id = 1  # Временное решение
+        
+        success = self.db.save_message(chat_id, sender_id, content, None, message_type)
+        
+        return {
+            'success': success,
+            'message': 'Message sent' if success else 'Failed to send message'
+        }
+    
+    def handle_create_chat(self, request_data):
+        """Обработка создания чата через веб-API"""
+        session_id = request_data.get('session_id')
+        user_id = request_data.get('user_id')
+        
+        if not session_id or not user_id:
+            return {'success': False, 'error': 'Session ID and user ID required'}
+        
+        # Для упрощения, используем фиктивный user1_id
+        user1_id = 1  # Временное решение
+        chat_id = self.db.get_or_create_private_chat(user1_id, user_id)
+        
+        return {
+            'success': chat_id is not None,
+            'chat_id': chat_id
+        }
+    
+    def handle_find_user(self, request_data):
+        """Обработка поиска пользователя через веб-API"""
+        display_name = request_data.get('display_name', '')
+        user_data = self.db.find_user_by_display_name(display_name)
+        
+        return {
+            'success': user_data is not None,
+            'user_data': user_data
+        }
+    
+    def handle_create_secure_chat(self, request_data):
+        """Обработка создания защищенного чата через веб-API"""
+        session_id = request_data.get('session_id')
+        chat_key = request_data.get('chat_key')
+        encryption_key = request_data.get('encryption_key')
+        
+        if not session_id or not chat_key:
+            return {'success': False, 'error': 'Session ID and chat key required'}
+        
+        session_data = self.db.create_secure_chat_session(chat_key, encryption_key)
+        
+        if session_data:
+            return {
+                'success': True,
+                'chat_key': session_data['chat_key'],
+                'session_id': session_data['session_id']
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Не удалось создать защищенный чат'
+            }
+    
+    def handle_join_secure_chat(self, request_data):
+        """Обработка подключения к защищенному чату через веб-API"""
+        session_id = request_data.get('session_id')
+        chat_key = request_data.get('chat_key')
+        encryption_key = request_data.get('encryption_key')
+        
+        if not session_id or not chat_key:
+            return {'success': False, 'error': 'Session ID and chat key required'}
+        
+        session_data = self.db.get_secure_chat_session(chat_key)
+        
+        if session_data:
+            if not encryption_key or session_data['encryption_key'] == encryption_key:
+                messages = self.db.get_secure_messages(chat_key)
+                
+                return {
+                    'success': True,
+                    'chat_key': chat_key,
+                    'session_id': session_data['session_id'],
+                    'participants_count': 1,
+                    'messages': messages
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Неверный ключ шифрования'
+                }
+        else:
+            return {
+                'success': False,
+                'error': 'Защищенный чат не найден'
+            }
+    
+    def handle_send_secure_message(self, request_data):
+        """Обработка отправки защищенного сообщения через веб-API"""
+        session_id = request_data.get('session_id')
+        chat_key = request_data.get('chat_key')
+        content = request_data.get('content')
+        
+        if not session_id or not chat_key or not content:
+            return {'success': False, 'error': 'Session ID, chat key and content required'}
+        
+        # Для упрощения, используем фиктивный sender_id
+        sender_id = 1  # Временное решение
+        
+        success = self.db.save_secure_message(chat_key, sender_id, content)
+        
+        return {
+            'success': success,
+            'message': 'Secure message sent' if success else 'Failed to send secure message'
+        }
+    
+    def handle_get_secure_messages(self, request_data):
+        """Обработка получения защищенных сообщений через веб-API"""
+        chat_key = request_data.get('chat_key')
+        
+        if not chat_key:
+            return {'success': False, 'error': 'Chat key required'}
+        
+        messages = self.db.get_secure_messages(chat_key)
+        
+        return {
+            'success': True,
+            'messages': messages
+        }
+    
+    def handle_clear_chat_history(self, request_data):
+        """Обработка очистки истории чатов через веб-API"""
+        session_id = request_data.get('session_id')
+        
+        if not session_id:
+            return {'success': False, 'error': 'Session ID required'}
+        
+        # Для упрощения, используем фиктивный user_id
+        user_id = 1  # Временное решение
+        success = self.db.clear_user_chat_history(user_id)
+        
+        return {
+            'success': success,
+            'message': 'Chat history cleared' if success else 'Failed to clear chat history'
+        }
+    
+    def handle_close_secure_chat(self, request_data):
+        """Обработка закрытия защищенного чата через веб-API"""
+        session_id = request_data.get('session_id')
+        chat_key = request_data.get('chat_key')
+        
+        if not session_id or not chat_key:
+            return {'success': False, 'error': 'Session ID and chat key required'}
+        
+        success = self.db.close_secure_chat(chat_key)
+        
+        return {
+            'success': success,
+            'message': 'Secure chat closed' if success else 'Failed to close secure chat'
+        }
+    
+    def handle_auto_close_secure_chat(self, request_data):
+        """Обработка автоматического закрытия защищенного чата через веб-API"""
+        chat_key = request_data.get('chat_key')
+        
+        if not chat_key:
+            return {'success': False, 'error': 'Chat key required'}
+        
+        success = self.db.close_secure_chat(chat_key)
+        
+        return {
+            'success': success,
+            'message': 'Secure chat auto-closed' if success else 'Failed to auto-close secure chat'
+        }
+    
+    def handle_get_chat_info(self, request_data):
+        """Обработка получения информации о чате через веб-API"""
+        session_id = request_data.get('session_id')
+        chat_id = request_data.get('chat_id')
+        
+        if not session_id or not chat_id:
+            return {'success': False, 'error': 'Session ID and chat ID required'}
+        
+        # Для упрощения, используем фиктивный user_id
+        user_id = 1  # Временное решение
+        chat_info = self.db.get_chat_info(user_id, chat_id)
+        
+        return {
+            'success': chat_info is not None,
+            'chat_info': chat_info
+        }
+    
+    def handle_change_display_name(self, request_data):
+        """Обработка изменения имени пользователя через веб-API"""
+        session_id = request_data.get('session_id')
+        new_display_name = request_data.get('new_display_name')
+        
+        if not session_id or not new_display_name:
+            return {'success': False, 'error': 'Session ID and new display name required'}
+        
+        # Для упрощения, используем фиктивный user_id
+        user_id = 1  # Временное решение
+        success = self.db.change_display_name(user_id, new_display_name)
+        
+        return {
+            'success': success,
+            'message': 'Display name changed' if success else 'Failed to change display name'
+        }
     
     def broadcast_to_chat(self, chat_id, message, exclude=None):
         """Отправка сообщения всем участникам чата"""
