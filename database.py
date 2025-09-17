@@ -78,6 +78,29 @@ class DatabaseManager:
         
         conn.commit()
         conn.close()
+        
+        # Выполняем миграции
+        self.run_migrations()
+    
+    def run_migrations(self):
+        """Выполнение миграций базы данных"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Проверяем, есть ли поле chat_key в таблице secure_chats
+            cursor.execute("PRAGMA table_info(secure_chats)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'chat_key' not in columns:
+                print("🔄 Выполняется миграция: добавление поля chat_key в secure_chats")
+                cursor.execute('ALTER TABLE secure_chats ADD COLUMN chat_key TEXT UNIQUE')
+                conn.commit()
+                print("✅ Миграция выполнена успешно")
+            
+            conn.close()
+        except Exception as e:
+            print(f"❌ Ошибка миграции: {e}")
     
     def hash_password(self, password):
         """Хеширование пароля"""
