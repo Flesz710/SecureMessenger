@@ -8,3 +8,4 @@ echo 🛑 Для остановки нажмите Ctrl+C
 echo.
 python simple_web_server.py
 pause
+

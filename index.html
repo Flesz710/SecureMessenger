@@ -1396,6 +1396,29 @@
                     title.style.transform = 'translateY(0)';
                 }, 300);
             }
+            
+            // Добавляем обработчик для предотвращения потери данных при закрытии страницы
+            window.addEventListener('beforeunload', function(e) {
+                if (currentUser && sessionId) {
+                    // Сохраняем состояние перед закрытием
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    localStorage.setItem('sessionId', sessionId);
+                }
+            });
+            
+            // Добавляем обработчик для восстановления фокуса
+            window.addEventListener('focus', function() {
+                if (currentUser && sessionId) {
+                    // Проверяем сессию при возвращении фокуса
+                    setTimeout(() => {
+                        if (currentChatId && !isSecureChat) {
+                            updateMessages();
+                        } else if (currentSecureChatKey && isSecureChat) {
+                            updateSecureMessages();
+                        }
+                    }, 1000);
+                }
+            });
         });
     </script>
 </body>

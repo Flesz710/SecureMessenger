@@ -169,3 +169,4 @@ def create_distribution_package():
 if __name__ == "__main__":
     create_distribution_package()
     input("\nНажмите Enter для выхода...")
+

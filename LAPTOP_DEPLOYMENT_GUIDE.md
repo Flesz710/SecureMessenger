@@ -234,3 +234,4 @@ taskkill /PID <PID> /F
 ```bash
 python setup_for_friends.py
 ```
+
